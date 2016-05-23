@@ -1,0 +1,324 @@
+/*
+** This program scans the directories and sub-directories for the files. The file changes on the server are monitored
+** and the modified files if present in the cache access table are sent to the proxy using the sync_files function.
+** The modified file name is passed to the sync_files function. The function will then open the file and will send it to 
+** the proxy.
+** TODO- Mirroring the server directory in the proxy during the initial setup
+*/
+
+
+#include<stdio.h>
+#include<dirent.h>
+#include<stdlib.h>
+#include<sys/stat.h>
+#include<string.h>
+#include<pthread.h>
+#include <stdbool.h>
+#include <ftw.h>
+
+#define FILE_LOCATION getenv("PWD")
+#define FILE_COLUMN_SPACING 50
+
+int indx = 0;
+DIR *dir, *getfiles;
+struct dirent *ent, *scanfiles;
+struct stat st;
+
+int FILE_COUNT = 0;         //Do not use this
+int STORE_FILE_COUNT = 0;   //Use this for storing the current file count
+
+typedef struct FILE_DETAILS
+{
+    char filename[FILE_COLUMN_SPACING];  //changed from pointer to array
+    long long int epoch_time;
+    long long int epoch_time_l;
+    long long int time_difference;
+}FILE_DETAILS;
+
+/*Stores the file names which are modified*/
+typedef struct SEND_FILES
+{
+    char filename[FILE_COLUMN_SPACING];
+}SEND_FILES;
+
+/*Stores the file names requested by proxy*/
+typedef struct CACHE_FILES
+{
+    char filename[FILE_COLUMN_SPACING];
+}CACHE_FILES;
+
+/*This should be global to be accessed*/
+FILE_DETAILS file_details[100] = {0}; //supporting 100 files
+SEND_FILES send_files[20] = {0};  //maximum of 20 file changes in a directory in a cycle
+CACHE_FILES cache_files[20] = {0};
+
+
+/*Tracking file count*/
+int track_files(const char *name, const struct stat *status, int type)
+{
+	if(type == FTW_NS)
+	{
+		  return 0;
+	}
+	if(type == FTW_F)
+	{
+		if(name[strlen(name)-1] != '~')
+		{
+			FILE_COUNT++;
+		}
+	}
+	if(type == FTW_D && strcmp(".", name) != 0)
+	{
+		if(name[strlen(name)-1] != '~') 
+		{
+			FILE_COUNT++;
+		}
+	}
+	return 0;
+}
+
+/*Using FTW for getfile count*/
+int get_file_count()
+{
+	FILE_COUNT = 0;
+	ftw(".", track_files, 1); 	
+	return FILE_COUNT;
+}
+
+/*File tree walk*/
+int search_initial(const char *name, const struct stat *status, int type) 
+{
+	//FILE_COUNT = get_file_count();
+ 	if(type == FTW_NS)
+	  return 0;
+	stat(name, &st);	
+
+	/*For files*/
+	if(type == FTW_F)
+	{
+	   if(name[strlen(name)-1] != '~') {
+		strcpy(file_details[indx].filename, name);
+		file_details[indx].epoch_time = (long long)st.st_mtim.tv_sec;
+		file_details[indx].epoch_time_l = (long long)st.st_mtim.tv_sec;
+		file_details[indx].time_difference = file_details[indx].epoch_time_l - file_details[indx].epoch_time;
+
+		printf("\n%d. %s", indx, file_details[indx].filename);
+		/*Format spacing*/
+		int getfilename_size = strlen(name);
+		int b;
+		for(b=0; b<(40 - getfilename_size); b++)
+		{
+			printf(" ");
+		}
+		printf("| %lld ", file_details[indx].epoch_time);
+		printf("| %lld ", file_details[indx].epoch_time_l);
+		printf("| %lld ", file_details[indx].time_difference);
+		indx++;
+	  }
+ 	}
+
+	/*For directories*/
+	if(type == FTW_D && strcmp(".", name) != 0)
+	{
+	  if(name[strlen(name)-1] != '~') {
+		strcpy(file_details[indx].filename, name);
+		file_details[indx].epoch_time = (long long)st.st_mtim.tv_sec;
+		file_details[indx].epoch_time_l = (long long)st.st_mtim.tv_sec;
+		file_details[indx].time_difference = file_details[indx].epoch_time_l - file_details[indx].epoch_time;
+
+		printf("\n%d. %s", indx, file_details[indx].filename);
+		/*Format spacing*/
+		int getfilename_size = strlen(name);
+		int b;
+		for(b=0; b<(40 - getfilename_size); b++)
+		{
+			printf(" ");
+		}
+		printf("| %lld ", file_details[indx].epoch_time);
+		printf("| %lld ", file_details[indx].epoch_time_l);
+		printf("| %lld ", file_details[indx].time_difference);
+		indx++;
+	  }
+	}
+ return 0;
+}
+
+int search_periodic(const char *name, const struct stat *status, int type) 
+{
+ 	if(type == FTW_NS)
+	  return 0;
+	stat(name, &st);	
+
+
+	/*Handle insertions and deletions*/
+
+	
+
+	/*For files*/
+	if(type == FTW_F)
+	{
+	   if(name[strlen(name)-1] != '~') {
+		strcpy(file_details[indx].filename, name);
+		//file_details[indx].epoch_time = (long long)st.st_mtim.tv_sec;
+		file_details[indx].epoch_time_l = (long long)st.st_mtim.tv_sec;
+		file_details[indx].time_difference = file_details[indx].epoch_time_l - file_details[indx].epoch_time;
+
+		printf("\n%d. %s", indx, file_details[indx].filename);
+		/*Format spacing*/
+		int getfilename_size = strlen(name);
+		int b;
+		for(b=0; b<(40 - getfilename_size); b++)
+		{
+			printf(" ");
+		}
+		printf("| %lld ", file_details[indx].epoch_time);
+		printf("| %lld ", file_details[indx].epoch_time_l);
+		printf("| %lld ", file_details[indx].time_difference);
+		indx++;
+	  }
+ 	}
+
+	/*For directories*/
+	if(type == FTW_D && strcmp(".", name) != 0)
+	{
+	  if(name[strlen(name)-1] != '~') {
+		strcpy(file_details[indx].filename, name);
+		file_details[indx].epoch_time = (long long)st.st_mtim.tv_sec;
+		file_details[indx].epoch_time_l = (long long)st.st_mtim.tv_sec;
+		file_details[indx].time_difference = file_details[indx].epoch_time_l - file_details[indx].epoch_time;
+
+		printf("\n%d. %s", indx, file_details[indx].filename);
+		/*Format spacing*/
+		int getfilename_size = strlen(name);
+		int b;
+		for(b=0; b<(40 - getfilename_size); b++)
+		{
+			printf(" ");
+		}
+		printf("| %lld ", file_details[indx].epoch_time);
+		printf("| %lld ", file_details[indx].epoch_time_l);
+		printf("| %lld ", file_details[indx].time_difference);
+		indx++;
+	  }
+	}
+ return 0;
+}
+
+
+
+void sync_files(char *filename)
+{
+	printf("\nFile %s synced!", filename);
+
+	/*Update the last modified with latest modified, make time difference 0*/
+	int file_cnt = get_file_count();
+	int a=0;
+	for(a; a<file_cnt; a++)
+	{
+		file_details[a].epoch_time = file_details[a].epoch_time_l;
+	}
+}
+
+
+void update_tables()
+{
+	/*First run make last_modified equals latest_modified*/	
+	static int only_once = 1;
+	if(only_once == 1)
+	{
+		ftw(".", search_initial, 1); //. is current directory
+		STORE_FILE_COUNT = get_file_count();
+		printf("\n---> File count is %d", STORE_FILE_COUNT); //Updates file_count
+		indx = 0;   	             //clear the index always
+		only_once = 0;
+	}
+	else
+	{
+
+		/*Checks for file deletions or insertions and re-walk the file tree/
+		/*Do not delete and add in the same loop*/
+		int get_file_num = get_file_count();
+
+		if(get_file_num < STORE_FILE_COUNT)//deletions
+		{
+			printf("\n Deleted file!");
+			ftw(".", search_initial, 1); 
+			indx = 0;
+			STORE_FILE_COUNT = get_file_num;
+			return;	
+		}
+		else if(get_file_num > STORE_FILE_COUNT)
+		{
+			printf("\n Added new file!");
+			ftw(".", search_initial, 1); 
+			indx = 0;
+			STORE_FILE_COUNT = get_file_num;
+			return;
+		}
+
+		/*If no insertions or deletions were made, continue else return at this point*/
+		ftw(".", search_periodic, 1); 
+		indx = 0;
+
+		//Scan all the time difference fields and keep a note of the indx whose diff is greater than zero
+		int track_time_diff = get_file_count();
+		int a = 0, b = 0;
+		for(a; a < track_time_diff; a++)
+		{
+			if(file_details[a].time_difference > 0)
+			{
+				/*Keeping track of the modified file names*/
+				strcpy(send_files[a].filename, file_details[a].filename);
+				printf("\n\nThe file is %s\n", send_files[a].filename);
+			}
+		}
+
+		/*Compare these file names with the file names from cache access table*/		
+		/*If it's a match, send those files*/
+		/*If the cache structure is empty, move on......*/
+
+		for(a=0; a<50; a++)  //limiting the max files to 50 in the directory
+		{
+			for(b=0; b<50; b++)
+			{
+				/*Check valid files only - WTF moment -_-*/
+				if( (strlen(cache_files[a].filename)!= 0) && (strlen(send_files[b].filename)!=0) )
+				{		
+					/*If the files names match in both the tables - HIT*/
+					if((strcmp(cache_files[a].filename, send_files[b].filename)) == 0)
+					{
+						/*Sends this file to the proxy*/
+						sync_files(send_files[b].filename);
+	
+						/*Delete the file which is sent*/
+						memset(&send_files[b].filename, 0, sizeof(send_files[b].filename));
+					}
+				}
+			}
+		}//end of for
+	}//else	
+}
+
+
+int main()
+{
+	/*Files in the cache table*/
+	
+	strcpy(cache_files[3].filename, "./ll");
+	strcpy(cache_files[1].filename, "./hello");
+	strcpy(cache_files[0].filename, "./Project/Proxy/hello");
+
+
+	printf("\n            File Name                      |  Last mod  | Latest mod | Time difference");
+	printf("\n--------------------------------------------------------------------------------------");
+	int r;
+	/*Modify r and sleep to change the loop count and sleep time*/
+	for(r=0; r<10; r++)
+	{
+		update_tables();
+		printf("\n---------------------------------------------------------------------------------------------------");
+		fflush(stdout);
+		sleep(10);
+	}
+	return 0;
+}
